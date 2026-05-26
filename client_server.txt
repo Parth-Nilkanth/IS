@@ -1,0 +1,125 @@
+import java.io.*;
+import java.net.*;
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+
+class Server {
+    ServerSocket ss;
+    Socket s;
+    DataInputStream in;
+
+    Server(int port) throws Exception {
+
+        ss = new ServerSocket(port);
+        System.out.println("Server Started...");
+
+        s = ss.accept();
+        System.out.println("Client Connected");
+
+        in = new DataInputStream(s.getInputStream());
+
+        // Receive DES key
+        int keyLen = in.readInt();
+        byte[] keyBytes = new byte[keyLen];
+        in.readFully(keyBytes);
+
+        SecretKey key = new SecretKeySpec(keyBytes, "DES");
+
+        // Create Cipher for Decryption
+        Cipher desCipher = Cipher.getInstance("DES/ECB/PKCS5Padding");
+        desCipher.init(Cipher.DECRYPT_MODE, key);
+
+        while (true) {
+
+            int len = in.readInt();
+
+            if (len == -1)
+                break;
+
+            byte[] encMsg = new byte[len];
+            in.readFully(encMsg);
+
+            // Decrypt
+            byte[] decMsg = desCipher.doFinal(encMsg);
+
+            String msg = new String(decMsg);
+
+            System.out.println("Encrypted Bytes : " + java.util.Arrays.toString(encMsg));
+            System.out.println("Decrypted Message : " + msg);
+
+            if (msg.equalsIgnoreCase("over"))
+                break;
+        }
+
+        in.close();
+        s.close();
+        ss.close();
+
+        System.out.println("Connection Closed");
+    }
+
+    public static void main(String args[]) throws Exception {
+        new Server(8000);
+    }
+}
+
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+import javax.crypto.*;
+
+class Client {
+
+    Socket s;
+    DataOutputStream out;
+
+    Client(String host, int port) throws Exception {
+
+        // Generate DES Key
+        KeyGenerator keygen = KeyGenerator.getInstance("DES");
+        SecretKey key = keygen.generateKey();
+
+        // Create Cipher for Encryption
+        Cipher desCipher = Cipher.getInstance("DES/ECB/PKCS5Padding");
+        desCipher.init(Cipher.ENCRYPT_MODE, key);
+
+        s = new Socket(host, port);
+
+        out = new DataOutputStream(s.getOutputStream());
+
+        // Send Key to Server
+        byte[] keyBytes = key.getEncoded();
+        out.writeInt(keyBytes.length);
+        out.write(keyBytes);
+
+        Scanner sc = new Scanner(System.in);
+
+        String msg = "";
+
+        while (!msg.equalsIgnoreCase("over")) {
+
+            System.out.print("Enter Message : ");
+            msg = sc.nextLine();
+
+            // Encrypt
+            byte[] encMsg = desCipher.doFinal(msg.getBytes());
+
+            // Send encrypted data
+            out.writeInt(encMsg.length);
+            out.write(encMsg);
+
+            System.out.println("Encrypted Data Sent");
+        }
+
+        out.writeInt(-1);
+
+        sc.close();
+        out.close();
+        s.close();
+    }
+
+    public static void main(String args[]) throws Exception {
+        new Client("127.0.0.1", 8000);
+    }
+}
